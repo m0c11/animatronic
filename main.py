@@ -1,31 +1,52 @@
-# это называется OpenCV для работы с фото, видео, камерой)
 import cv2
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
-# это мы берем переменную с нашим озбражением, так как тут вебка, то мы пишем
-#  0, но если хотим видео, то указывакм в ковычках путь до файла
-# цифра 0 означает, что система выберет единсвенную вебку,
-# если их больше, то цифру нужно вписать следующую
+# Создаем конфигурацию для FaceLandmarker
+base_options = python.BaseOptions(model_asset_path='face_landmarker_v2_with_blendshapes.task')
+options = vision.FaceLandmarkerOptions(
+    base_options=base_options,
+    output_face_blendshapes=False,
+    output_facial_transformation_matrixes=False,
+    num_faces=1
+)
+
+# Создаем детектор
+detector = vision.FaceLandmarker.create_from_options(options)
+
 cap = cv2.VideoCapture(0)
 
-# это для того, чтобы каждый кадр показывался
 while True:
-    # первая переменная берется по типу булина, чтобы
-    #  проверить - есть ли вообще изображение
-    # вторая переменная берется для каждого изображения
     success, img = cap.read()
-    # вот тут мы меняем размеры
+    if not success:
+        break
+
     img = cv2.resize(img, (680, 540))
-    # это блюр, можно использовать только нечетные цифры
-    # img = cv2.GaussianBlur(img, (41, 41), 0)
-    # для перехода на черно белый например вот так
-    # img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # так же для понимания контура
-    # img = cv2.Canny(img, 35, 35)
-    # тут мы выводим
-    # тут еще можно срезом обрезать изображение
-    #  по кординатам типо вот так, как ниже
+    rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    
+    # Конвертируем numpy-изображение в формат mediapipe
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_img)
+    detection_result = detector.detect(mp_image)
+
+    if detection_result.face_landmarks:
+        face_landmarks = detection_result.face_landmarks[0]
+        # Получаем координаты точек губ (индексы могут отличаться)
+        top_lip = face_landmarks[13]
+        bottom_lip = face_landmarks[14]
+
+        h, w, _ = img.shape
+        x_top, y_top = int(top_lip.x * w), int(top_lip.y * h)
+        x_bot, y_bot = int(bottom_lip.x * w), int(bottom_lip.y * h)
+
+        # Рисуем точки на изображении
+        cv2.circle(img, (x_top, y_top), 2, (0, 255, 0), -1)
+        cv2.circle(img, (x_bot, y_bot), 2, (0, 255, 0), -1)
+
     cv2.imshow('Result', img)
-    # это мы пишем, что если нажимаешь на 'q', то выходит или, если
-    # изображения нет, то через 1 милисекунду мы выходим из вайла
+
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
+
+cap.release()
+cv2.destroyAllWindows()
